@@ -151,3 +151,19 @@ MIT
 - [agent-memory-topology](https://github.com/Kubo-cmd/agent-memory-topology) — Persistent homology
 - [agent-wasserstein-geometry](https://github.com/Kubo-cmd/agent-wasserstein-geometry) — Optimal transport
 - [agent-information-geometry](https://github.com/Kubo-cmd/agent-information-geometry) — Fisher information
+
+## Agent Math Series
+
+Part of a 10-repo series applying advanced mathematics to agent systems:
+
+- [agent-lie-groups](https://github.com/Kubo-cmd/agent-lie-groups) — Continuous symmetry
+- [agent-knot-theory](https://github.com/Kubo-cmd/agent-knot-theory) — Entanglement invariants
+- [agent-tqft](https://github.com/Kubo-cmd/agent-tqft) — Topological quantum field theory
+- [agent-operad-theory](https://github.com/Kubo-cmd/agent-operad-theory) — Multi-input composition
+- [agent-homotopy-type-theory](https://github.com/Kubo-cmd/agent-homotopy-type-theory) — Identity types
+- [agent-topos-theory](https://github.com/Kubo-cmd/agent-topos-theory) — Logic and geometry
+- [agent-sheaf-theory](https://github.com/Kubo-cmd/agent-sheaf-theory) — Local-to-global data
+- [agent-representation-theory](https://github.com/Kubo-cmd/agent-representation-theory) — Symmetry representations
+- [agent-information-geometry](https://github.com/Kubo-cmd/agent-information-geometry) — Fisher information
+- [agent-memory-topology](https://github.com/Kubo-cmd/agent-memory-topology) — Persistent homology
+- [agent-wasserstein-geometry](https://github.com/Kubo-cmd/agent-wasserstein-geometry) — Optimal transport
