@@ -6,9 +6,11 @@ from agent_category_theory import (
     Morphism,
     Identity,
     Functor,
+    NaturalTransformation,
     AgentCategory,
     MemoryMonad,
     MaybeMonad,
+    YonedaEmbedding,
 )
 
 
@@ -66,6 +68,31 @@ class TestMorphism:
         with pytest.raises(ValueError, match="Cannot compose"):
             f.compose(g)
 
+    def test_identity_laws_hold_extensionally(self):
+        A = Object("A")
+        B = Object("B")
+        morph = Morphism[int, int](A, B, lambda x: x + 1)
+
+        left_identity = Identity(A).compose(morph)
+        right_identity = morph.compose(Identity(B))
+
+        assert left_identity(5) == morph(5)
+        assert right_identity(5) == morph(5)
+
+    def test_associativity_holds_extensionally(self):
+        A = Object("A")
+        B = Object("B")
+        C = Object("C")
+        D = Object("D")
+        f = Morphism[int, int](A, B, lambda value: value + 1)
+        g = Morphism[int, int](B, C, lambda value: value * 2)
+        h = Morphism[int, int](C, D, lambda value: value - 3)
+
+        left = f.compose(g).compose(h)
+        right = f.compose(g.compose(h))
+
+        assert left(5) == right(5)
+
 
 class TestIdentity:
     def test_identity_morphism(self):
@@ -83,41 +110,117 @@ class TestIdentity:
 
 class TestFunctor:
     def test_functor_map_object(self):
-        class DoubleFunctor(Functor):
+        class SuffixFunctor(Functor):
             def map_object(self, obj):
-                return Object(f"{obj.name}_doubled")
+                return Object(f"{obj.name}_mapped")
             
-            def map_morphism(self, morph):
+            def map_morphism(self, morphism):
                 return Morphism(
-                    self.map_object(morph.source),
-                    self.map_object(morph.target),
-                    lambda x: morph(x) * 2
+                    self.map_object(morphism.source),
+                    self.map_object(morphism.target),
+                    morphism.func
                 )
         
-        F = DoubleFunctor()
+        F = SuffixFunctor()
         obj = Object("test")
         mapped = F.map_object(obj)
-        assert mapped.name == "test_doubled"
+        assert mapped.name == "test_mapped"
     
     def test_functor_map_morphism(self):
-        class DoubleFunctor(Functor):
+        class SuffixFunctor(Functor):
             def map_object(self, obj):
-                return Object(f"{obj.name}_doubled")
+                return Object(f"{obj.name}_mapped")
             
-            def map_morphism(self, morph):
+            def map_morphism(self, morphism):
                 return Morphism(
-                    self.map_object(morph.source),
-                    self.map_object(morph.target),
-                    lambda x: morph(x) * 2
+                    self.map_object(morphism.source),
+                    self.map_object(morphism.target),
+                    morphism.func
                 )
         
-        F = DoubleFunctor()
+        F = SuffixFunctor()
         A = Object("A")
         B = Object("B")
         morph = Morphism(A, B, lambda x: x + 1)
         
         mapped = F.map_morphism(morph)
-        assert mapped(5) == 12  # (5 + 1) * 2
+        assert mapped(5) == 6
+
+    def test_functor_call_rejects_unknown_values(self):
+        class IdentityFunctor(Functor):
+            def map_object(self, obj):
+                return obj
+
+            def map_morphism(self, morphism):
+                return morphism
+
+        with pytest.raises(TypeError, match="Cannot apply functor"):
+            IdentityFunctor()(42)
+
+    def test_structure_preserving_functor_laws_extensionally(self):
+        class SuffixFunctor(Functor):
+            def map_object(self, obj):
+                return Object(f"{obj.name}_mapped")
+
+            def map_morphism(self, morphism):
+                return Morphism(
+                    self.map_object(morphism.source),
+                    self.map_object(morphism.target),
+                    morphism.func,
+                )
+
+        A = Object("A")
+        B = Object("B")
+        C = Object("C")
+        f = Morphism[int, int](A, B, lambda value: value + 1)
+        g = Morphism[int, int](B, C, lambda value: value * 2)
+        functor = SuffixFunctor()
+
+        mapped_identity = functor.map_morphism(Identity(A))
+        mapped_composition = functor.map_morphism(f.compose(g))
+        composed_mappings = functor.map_morphism(f).compose(
+            functor.map_morphism(g)
+        )
+
+        assert mapped_identity(5) == 5
+        assert mapped_composition(5) == composed_mappings(5)
+
+
+class TestNaturalTransformation:
+    class RenameFunctor(Functor):
+        def __init__(self, suffix):
+            self.suffix = suffix
+
+        def map_object(self, obj):
+            return Object(f"{obj.name}{self.suffix}")
+
+        def map_morphism(self, morphism):
+            return Morphism(
+                self.map_object(morphism.source),
+                self.map_object(morphism.target),
+                morphism.func,
+            )
+
+    def test_valid_component(self):
+        obj = Object("A")
+        source = self.RenameFunctor("_source")
+        target = self.RenameFunctor("_target")
+        component = Morphism(source.map_object(obj), target.map_object(obj), lambda x: x)
+
+        transformation = NaturalTransformation(
+            "rename", source, target, {obj: component}
+        )
+
+        assert transformation.component(obj)("value") == "value"
+
+    def test_invalid_component_endpoints_are_rejected(self):
+        obj = Object("A")
+        source = self.RenameFunctor("_source")
+        target = self.RenameFunctor("_target")
+        invalid = Morphism(Object("wrong"), target.map_object(obj), lambda x: x)
+
+        with pytest.raises(ValueError, match="Invalid component"):
+            NaturalTransformation("rename", source, target, {obj: invalid})
 
 
 class TestAgentCategory:
@@ -132,6 +235,15 @@ class TestAgentCategory:
         obj = Object("test")
         cat.add_object(obj)
         assert obj in cat.objects
+
+    def test_add_object_is_idempotent(self):
+        cat = AgentCategory("TestCat")
+        obj = Object("test")
+
+        cat.add_object(obj)
+        cat.add_object(obj)
+
+        assert cat.objects == [obj]
     
     def test_add_morphism(self):
         cat = AgentCategory("TestCat")
@@ -210,6 +322,24 @@ class TestMemoryMonad:
         result = result.bind(lambda x: MemoryMonad(x + 1, [x]))
         assert result.memory_state == [1, 2]
 
+    def test_right_identity_does_not_duplicate_memory(self):
+        mem = MemoryMonad(10, ["existing"])
+
+        assert mem.bind(lambda value: mem.unit(value)) == mem
+
+    def test_left_identity(self):
+        unit = MemoryMonad[int](0, [])
+        transform = lambda value: MemoryMonad(value + 1, ["transform"])
+
+        assert unit.unit(2).bind(transform) == transform(2)
+
+    def test_associativity(self):
+        mem = MemoryMonad(2, ["start"])
+        f = lambda value: MemoryMonad(value + 1, ["f"])
+        g = lambda value: MemoryMonad(value * 3, ["g"])
+
+        assert mem.bind(f).bind(g) == mem.bind(lambda value: f(value).bind(g))
+
 
 class TestMaybeMonad:
     def test_just(self):
@@ -245,3 +375,24 @@ class TestMaybeMonad:
             .bind(lambda x: MaybeMonad(x * 2))
         )
         assert result.value == 12
+
+
+class TestYonedaEmbedding:
+    def test_accepts_only_category_morphisms_targeting_object(self):
+        category = AgentCategory("TestCat")
+        source = Object("A")
+        target = Object("B")
+        morphism = Morphism(source, target, lambda value: value)
+        outsider = Morphism(source, target, lambda value: value)
+        category.add_morphism(morphism)
+
+        hom = YonedaEmbedding(category).embed(target)
+
+        assert hom(morphism) is morphism
+        assert hom(outsider) is None
+
+    def test_rejects_object_outside_category(self):
+        category = AgentCategory("TestCat")
+
+        with pytest.raises(ValueError, match="not in category"):
+            YonedaEmbedding(category).embed(Object("outside"))

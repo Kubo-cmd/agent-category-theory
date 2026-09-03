@@ -19,18 +19,15 @@ This repo provides the categorical primitives for building composable agent syst
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, List, Optional, TypeVar
+from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar
 from abc import ABC, abstractmethod
-import functools
 
 
 # Type variables
 A = TypeVar('A')
 B = TypeVar('B')
 C = TypeVar('C')
-X = TypeVar('X')
-Y = TypeVar('Y')
-Z = TypeVar('Z')
+
 
 
 # =============================================================================
@@ -59,7 +56,7 @@ class Morphism(ABC, Generic[A, B]):
         return self.func(x)
     
     def compose(self, other: 'Morphism[B, C]') -> 'Morphism[A, C]':
-        """Compose this morphism with another: self ∘ other."""
+        """Apply this morphism, then ``other``."""
         if self.target != other.source:
             raise ValueError(
                 f"Cannot compose: {self.target} != {other.source}"
@@ -87,17 +84,17 @@ class Identity(Morphism[A, A]):
 # =============================================================================
 
 class Functor(ABC, Generic[A, B]):
-    """A functor maps objects and morphisms from one category to another."""
+    """Map objects and morphisms; subclasses must preserve category laws."""
     
     @abstractmethod
     def map_object(self, obj: Object) -> Object:
         """Map an object."""
-        pass
+        raise NotImplementedError
     
     @abstractmethod
     def map_morphism(self, morphism: Morphism) -> Morphism:
         """Map a morphism."""
-        pass
+        raise NotImplementedError
     
     def __call__(self, x: Any) -> Any:
         """Apply the functor to an object or morphism."""
@@ -115,11 +112,29 @@ class Functor(ABC, Generic[A, B]):
 
 @dataclass
 class NaturalTransformation:
-    """A natural transformation between two functors F and G."""
+    """Components between functors with validated endpoints.
+
+    Construction checks each component has type ``F(X) -> G(X)``. General
+    naturality requires equality over user-defined callables, so callers remain
+    responsible for checking the naturality square in their concrete domain.
+    """
     name: str
     source_functor: Functor
     target_functor: Functor
-    components: dict  # Object → Morphism
+    components: Dict[Object, Morphism]  # Object → Morphism
+
+    def __post_init__(self) -> None:
+        for obj, component in self.components.items():
+            if not isinstance(obj, Object) or not isinstance(component, Morphism):
+                raise TypeError("Components must map Object values to Morphism values")
+            expected_source = self.source_functor.map_object(obj)
+            expected_target = self.target_functor.map_object(obj)
+            if component.source != expected_source or component.target != expected_target:
+                raise ValueError(
+                    f"Invalid component for {obj}: expected "
+                    f"{expected_source} -> {expected_target}, got "
+                    f"{component.source} -> {component.target}"
+                )
     
     def component(self, obj: Object) -> Morphism:
         """Get the component at object X: η_X : F(X) → G(X)."""
@@ -141,12 +156,12 @@ class Monad(ABC, Generic[A]):
     @abstractmethod
     def unit(self, value: A) -> 'Monad[A]':
         """Wrap a value (return/pure)."""
-        pass
+        raise NotImplementedError
     
     @abstractmethod
     def bind(self, f: Callable[[A], 'Monad[B]']) -> 'Monad[B]':
         """Chain computations (>>= / flatMap)."""
-        pass
+        raise NotImplementedError
     
     def map(self, f: Callable[[A], B]) -> 'Monad[B]':
         """Apply a function inside the monad (fmap)."""
@@ -160,7 +175,7 @@ class MemoryMonad(Monad[A]):
     memory_state: List[Any]
     
     def unit(self, value: A) -> 'MemoryMonad[A]':
-        return MemoryMonad(value, self.memory_state.copy())
+        return MemoryMonad(value, [])
     
     def bind(self, f: Callable[[A], 'MemoryMonad[B]']) -> 'MemoryMonad[B]':
         result = f(self.value)
@@ -217,7 +232,8 @@ class AgentCategory:
     
     def add_object(self, obj: Object):
         """Add an object (agent state) to the category."""
-        self.objects.append(obj)
+        if obj not in self.objects:
+            self.objects.append(obj)
     
     def add_morphism(self, morphism: Morphism):
         """Add a morphism (transformation) to the category."""
@@ -260,13 +276,12 @@ class YonedaEmbedding:
         self.category = category
     
     def embed(self, obj: Object) -> Callable[[Morphism], Any]:
-        """
-        Yoneda embedding: X ↦ Hom(-, X)
-        
-        Returns a functor that maps each object Y to Hom(Y, X).
-        """
+        """Return a membership-filtered evaluator for ``Hom(-, obj)``."""
+        if obj not in self.category.objects:
+            raise ValueError(f"{obj} not in category")
+
         def hom_set(morphism: Morphism) -> Any:
-            if morphism.target == obj:
+            if morphism in self.category.morphisms and morphism.target == obj:
                 return morphism
             return None
         
@@ -348,21 +363,20 @@ def main():
     print()
     
     # Functor example
-    print("Functor (doubling):")
-    class DoublingFunctor(Functor):
+    print("Functor (renaming):")
+    class RenamingFunctor(Functor):
         def map_object(self, obj: Object) -> Object:
-            return Object(f"{obj.name}_doubled")
+            return Object(f"mapped_{obj.name}")
         
         def map_morphism(self, morphism: Morphism) -> Morphism:
-            doubled_func = lambda x: morphism(x) * 2
             return Morphism(
                 self.map_object(morphism.source),
                 self.map_object(morphism.target),
-                doubled_func
+                morphism.func
             )
     
-    double = DoublingFunctor()
-    print(f"  Object: {idle} → {double.map_object(idle)}")
+    rename = RenamingFunctor()
+    print(f"  Object: {idle} → {rename.map_object(idle)}")
     print()
     
     print("=" * 70)
