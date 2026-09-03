@@ -20,11 +20,15 @@ classifiers = [
 ]
 dependencies = []
 
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
 [project.urls]
 Homepage = "https://github.com/Kubo-cmd/agent-category-theory"
+Issues = "https://github.com/Kubo-cmd/agent-category-theory/issues"
 
-[tool.setuptools.packages.find]
-include = ["agent_category_theory*"]
+[tool.setuptools]
+py-modules = ["agent_category_theory"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

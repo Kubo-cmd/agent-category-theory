@@ -1,5 +1,7 @@
 # Agent Category Theory
 
+[![CI](https://github.com/Kubo-cmd/agent-category-theory/actions/workflows/ci.yml/badge.svg)](https://github.com/Kubo-cmd/agent-category-theory/actions/workflows/ci.yml)
+
 Mathematical framework for composing agent behaviors using category theory — the "mathematics of mathematics."
 
 ## The Problem
@@ -29,7 +31,7 @@ acting = Object("Acting")
 start_thinking = Morphism(idle, thinking, lambda x: f"{x} → thinking")
 start_acting = Morphism(thinking, acting, lambda x: f"{x} → acting")
 
-# Compose them
+# Compose them in execution order: first thinking, then acting
 lifecycle = start_thinking.compose(start_acting)
 print(lifecycle("agent"))  # "agent → thinking → acting"
 ```
@@ -44,7 +46,10 @@ Every category must satisfy:
 from agent_category_theory import Identity
 
 id_idle = Identity(idle)
-assert start_thinking.compose(id_idle) == start_thinking
+left_identity = id_idle.compose(start_thinking)
+right_identity = start_thinking.compose(Identity(thinking))
+assert left_identity("agent") == start_thinking("agent")
+assert right_identity("agent") == start_thinking("agent")
 ```
 
 ### Agent Categories
@@ -59,27 +64,29 @@ cat.add_morphism(start_acting)
 print(cat)  # AgentCategory(AgentLifecycle, 3 objects, 2 morphisms)
 ```
 
-### Functors: Mappings Between Categories
+### Functors: Structure-Preserving Mappings Between Categories
 
 Functors preserve structure when mapping between categories.
 
 ```python
 from agent_category_theory import Functor
 
-class DoubleFunctor(Functor):
+class SuffixFunctor(Functor):
     def map_object(self, obj):
-        return Object(f"{obj.name}_doubled")
+        return Object(f"{obj.name}_mapped")
     
     def map_morphism(self, morph):
         return Morphism(
             self.map_object(morph.source),
             self.map_object(morph.target),
-            lambda x: morph(x) * 2
+            morph.func
         )
 
-F = DoubleFunctor()
-mapped = F.map_object(idle)  # Object("Idle_doubled")
+F = SuffixFunctor()
+mapped = F.map_object(idle)  # Object("Idle_mapped")
 ```
+
+Concrete subclasses are responsible for preserving identities and composition.
 
 ### Monads: Encapsulating Side Effects
 
@@ -118,17 +125,21 @@ print(result.value)  # None
 
 ## Why This Matters
 
-1. **Formal composition**: Morphisms compose associatively with identity — guaranteed correct pipelines
+1. **Structured composition**: Morphisms compose in checked source-to-target order
 2. **Universal patterns**: Functors, monads, natural transformations appear everywhere
 3. **Side-effect management**: Monads isolate memory, errors, I/O
-4. **Verification**: Category laws enable formal proof of correctness
+4. **Verification**: Tests can check category laws extensionally for concrete morphisms
 5. **Abstraction**: Same patterns work for agents, databases, UIs, networks
 
 ## Installation
 
 ```bash
-pip install numpy  # Only dependency
+git clone https://github.com/Kubo-cmd/agent-category-theory.git
+cd agent-category-theory
+python -m pip install .
 ```
+
+The library has no runtime dependencies and supports Python 3.9 or newer.
 
 ## Usage
 
@@ -139,8 +150,12 @@ python agent_category_theory.py
 ## Tests
 
 ```bash
-pytest tests/ -v
+python -m pip install ".[test]"
+python -m pytest -v
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete local verification flow
+and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
 ## License
 
